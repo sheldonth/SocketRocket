@@ -445,6 +445,12 @@ static __strong NSData *CRLFCRLF;
 
 - (void)_HTTPHeadersDidFinish;
 {
+    CFDictionaryRef headers = CFHTTPMessageCopyAllHeaderFields(_receivedHTTPHeaders);
+    NSDictionary* headersDict = (__bridge NSDictionary*)headers;
+    
+    if (self.delegate && [self.delegate respondsToSelector:@selector(webSocket:didReceiveHTTPHeaders:)])
+        [self.delegate webSocket:self didReceiveHTTPHeaders:headersDict];
+    
     NSInteger responseCode = CFHTTPMessageGetResponseStatusCode(_receivedHTTPHeaders);
     
     if (responseCode >= 400) {
