@@ -525,7 +525,7 @@ static __strong NSData *CRLFCRLF;
     assert([_secKey length] == 24);
     
     if (_cookieString)
-        CFHTTPMessageSetHeaderFieldValue(request, CFSTR("cookies"), (__bridge CFStringRef)_cookieString);
+        CFHTTPMessageSetHeaderFieldValue(request, CFSTR("Cookies"), (__bridge CFStringRef)_cookieString);
     
     CFHTTPMessageSetHeaderFieldValue(request, CFSTR("Upgrade"), CFSTR("websocket"));
     CFHTTPMessageSetHeaderFieldValue(request, CFSTR("Connection"), CFSTR("Upgrade"));
