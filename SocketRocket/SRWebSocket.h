@@ -50,7 +50,7 @@ extern NSString *const SRWebSocketErrorDomain;
 - (id)initWithURLRequest:(NSURLRequest *)request;
 
 // Some helper constructors.
-- (id)initWithURL:(NSURL *)url protocols:(NSArray *)protocols;
+- (id)initWithURL:(NSURL *)url cookieString:(NSString*)cookieString protocols:(NSArray *)protocols;
 - (id)initWithURL:(NSURL *)url;
 
 // Delegate queue will be dispatch_main_queue by default.

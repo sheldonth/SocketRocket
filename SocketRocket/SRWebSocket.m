@@ -272,6 +272,8 @@ typedef void (^data_callback)(SRWebSocket *webSocket,  NSData *data);
     
     NSArray *_requestedProtocols;
     SRIOConsumerPool *_consumerPool;
+    
+    NSString* _cookieString;
 }
 
 @synthesize delegate = _delegate;
@@ -309,12 +311,13 @@ static __strong NSData *CRLFCRLF;
 
 - (id)initWithURL:(NSURL *)url;
 {
-    return [self initWithURL:url protocols:nil];
+    return [self initWithURL:url cookieString:nil protocols:nil];
 }
 
-- (id)initWithURL:(NSURL *)url protocols:(NSArray *)protocols;
+- (id)initWithURL:(NSURL *)url cookieString:(NSString*)cookieString protocols:(NSArray *)protocols;
 {
-    NSMutableURLRequest *request = [[NSMutableURLRequest alloc] initWithURL:url];    
+    NSMutableURLRequest *request = [[NSMutableURLRequest alloc] initWithURL:url];
+    _cookieString = cookieString;
     return [self initWithURLRequest:request protocols:protocols];
 }
 
@@ -520,6 +523,9 @@ static __strong NSData *CRLFCRLF;
     SecRandomCopyBytes(kSecRandomDefault, keyBytes.length, keyBytes.mutableBytes);
     _secKey = keyBytes.base64Encoding;
     assert([_secKey length] == 24);
+    
+    if (_cookieString)
+        CFHTTPMessageSetHeaderFieldValue(request, CFSTR("cookies"), (__bridge CFStringRef)_cookieString);
     
     CFHTTPMessageSetHeaderFieldValue(request, CFSTR("Upgrade"), CFSTR("websocket"));
     CFHTTPMessageSetHeaderFieldValue(request, CFSTR("Connection"), CFSTR("Upgrade"));
