@@ -134,6 +134,7 @@ static NSString *newSHA1String(const char *bytes, size_t length) {
 @end
 
 NSString *const SRWebSocketErrorDomain = @"SRWebSocketErrorDomain";
+NSInteger const SRWebSocketHeartbeatTimeoutErrorCode = 2134;
 
 // Returns number of bytes consumed. Returning 0 means you didn't match.
 // Sends bytes to callback handler;
@@ -171,6 +172,11 @@ typedef void (^data_callback)(SRWebSocket *webSocket,  NSData *data);
 - (void)_writeData:(NSData *)data;
 - (void)_closeWithProtocolError:(NSString *)message;
 - (void)_failWithError:(NSError *)error;
+
+- (void)_sendPing;
+
+- (void)_resetHeartbeatTimer;
+- (void)_handleHeartbeatTimer;
 
 - (void)_disconnect;
 
@@ -211,6 +217,10 @@ typedef void (^data_callback)(SRWebSocket *webSocket,  NSData *data);
     
     dispatch_queue_t _workQueue;
     NSMutableArray *_consumers;
+    
+    dispatch_source_t _heartbeatTimer;
+    NSTimeInterval _lastSentPingTime;
+    BOOL _waitingForHeartbeatResponse;
 
     NSInputStream *_inputStream;
     NSOutputStream *_outputStream;
@@ -330,6 +340,12 @@ static __strong NSData *CRLFCRLF;
     _delegateDispatchQueue = dispatch_get_main_queue();
     sr_dispatch_retain(_delegateDispatchQueue);
     
+    _heartbeatTimer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, _workQueue);
+    dispatch_source_set_event_handler(_heartbeatTimer, ^{
+        [self _handleHeartbeatTimer];
+    });
+    dispatch_resume(_heartbeatTimer);
+    
     _readBuffer = [[NSMutableData alloc] init];
     _outputBuffer = [[NSMutableData alloc] init];
     
@@ -342,6 +358,9 @@ static __strong NSData *CRLFCRLF;
     _scheduledRunloops = [[NSMutableSet alloc] init];
     
     [self _initializeStreams];
+    
+    _heartbeatInterval = 0.0;
+    _heartbeatTimeout = 30.0;
     
     // default handlers
 }
@@ -361,6 +380,10 @@ static __strong NSData *CRLFCRLF;
     
     sr_dispatch_release(_workQueue);
     _workQueue = NULL;
+    
+    dispatch_source_cancel(_heartbeatTimer);
+    sr_dispatch_release(_heartbeatTimer);
+    _heartbeatTimer = NULL;
     
     if (_receivedHTTPHeaders) {
         CFRelease(_receivedHTTPHeaders);
@@ -472,6 +495,8 @@ static __strong NSData *CRLFCRLF;
         [self _readFrameNew];
     }
 
+    [self _resetHeartbeatTimer];
+    
     [self _performDelegateBlock:^{
         if ([self.delegate respondsToSelector:@selector(webSocketDidOpen:)]) {
             [self.delegate webSocketDidOpen:self];
@@ -704,6 +729,7 @@ static __strong NSData *CRLFCRLF;
     [_outputBuffer appendData:data];
     [self _pumpWriting];
 }
+
 - (void)send:(id)data;
 {
     NSAssert(self.readyState != SR_CONNECTING, @"Invalid State: Cannot call send: until connection is open");
@@ -722,6 +748,18 @@ static __strong NSData *CRLFCRLF;
     });
 }
 
+- (void)_sendPing
+{
+    [self assertOnWorkQueue];
+    
+    [self _sendFrameWithOpcode:SROpCodePing data:[NSData data]];
+    _lastSentPingTime = [NSDate timeIntervalSinceReferenceDate];
+    _waitingForHeartbeatResponse = YES;
+    if (self.heartbeatTimeout > 0.0) {
+        dispatch_source_set_timer(_heartbeatTimer, dispatch_time(DISPATCH_TIME_NOW, self.heartbeatTimeout * NSEC_PER_SEC), DISPATCH_TIME_FOREVER, (1ull * NSEC_PER_SEC) / 10);
+    }
+}
+
 - (void)handlePing:(NSData *)pingData;
 {
     // Need to pingpong this off _callbackQueue first to make sure messages happen in order
@@ -735,6 +773,38 @@ static __strong NSData *CRLFCRLF;
 - (void)handlePong;
 {
     // NOOP
+    SRFastLog(@"Received pong (%.1f ms round-trip time)", ([NSDate timeIntervalSinceReferenceDate] - _lastSentPingTime) * 1000.0);
+}
+
+- (void)_resetHeartbeatTimer
+{
+    [self assertOnWorkQueue];
+    
+    _waitingForHeartbeatResponse = NO;
+    if (self.heartbeatInterval > 0.0 && self.readyState == SR_OPEN) {
+        dispatch_source_set_timer(_heartbeatTimer, dispatch_time(DISPATCH_TIME_NOW, self.heartbeatInterval * NSEC_PER_SEC), DISPATCH_TIME_FOREVER, (1ull * NSEC_PER_SEC) / 10);
+    }
+    else {
+        dispatch_source_set_timer(_heartbeatTimer, DISPATCH_TIME_FOREVER, DISPATCH_TIME_FOREVER, (1ull * NSEC_PER_SEC) / 10);
+    }
+}
+
+- (void)_handleHeartbeatTimer
+{
+    [self assertOnWorkQueue];
+    
+    if (_waitingForHeartbeatResponse) {
+        // Got called while waiting for a PONG
+        SRFastLog(@"Server did not respond to ping heartbeat within timeout, disconnecting");
+        [self _failWithError:[NSError errorWithDomain:SRWebSocketErrorDomain code:SRWebSocketHeartbeatTimeoutErrorCode userInfo:[NSDictionary dictionaryWithObject:@"Server did not respond to ping heartbeat within timeout" forKey:NSLocalizedDescriptionKey]]];
+    }
+    else {
+        if (self.readyState == SR_OPEN) {
+            // Got called by our timer, we should send a PING
+            SRFastLog(@"Connection inactivity timeout reached, sending ping heartbeat");
+            [self _sendPing];
+        }
+    }
 }
 
 - (void)_handleMessage:(id)message
@@ -871,6 +941,8 @@ static inline BOOL closeCodeIsValid(int closeCode) {
             // TODO: Handle invalid opcode
             break;
     }
+    
+    [self _resetHeartbeatTimer];
 }
 
 - (void)_handleFrameHeader:(frame_header)frame_header curData:(NSData *)curData;
