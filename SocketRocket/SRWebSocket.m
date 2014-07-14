@@ -45,7 +45,7 @@
 #endif
 
 #if !__has_feature(objc_arc) 
-#error SocketRocket muust be compiled with ARC enabled
+#error SocketRocket must be compiled with ARC enabled
 #endif
 
 
@@ -58,19 +58,6 @@ typedef enum  {
     SROpCodePong = 0xA,
     // B-F reserved.
 } SROpCode;
-
-typedef enum {
-    SRStatusCodeNormal = 1000,
-    SRStatusCodeGoingAway = 1001,
-    SRStatusCodeProtocolError = 1002,
-    SRStatusCodeUnhandledType = 1003,
-    // 1004 reserved.
-    SRStatusNoStatusReceived = 1005,
-    // 1004-1006 reserved.
-    SRStatusCodeInvalidUTF8 = 1007,
-    SRStatusCodePolicyViolated = 1008,
-    SRStatusCodeMessageTooBig = 1009,
-} SRStatusCode;
 
 typedef struct {
     BOOL fin;
@@ -627,7 +614,7 @@ static __strong NSData *CRLFCRLF;
 
 - (void)close;
 {
-    [self closeWithCode:-1 reason:nil];
+    [self closeWithCode:SRStatusCodeNormal reason:nil];
 }
 
 - (void)closeWithCode:(NSInteger)code reason:(NSString *)reason;
@@ -1334,8 +1321,6 @@ static const size_t SRFrameHeaderOverhead = 32;
         unmasked_payload = (uint8_t *)[data bytes];
     } else if ([data isKindOfClass:[NSString class]]) {
         unmasked_payload =  (const uint8_t *)[data UTF8String];
-    } else {
-        assert(NO);
     }
     
     if (payloadLength < 126) {
@@ -1450,7 +1435,7 @@ static const size_t SRFrameHeaderOverhead = 32;
                         // If we get closed in this state it's probably not clean because we should be sending this when we send messages
                         [self _performDelegateBlock:^{
                             if ([self.delegate respondsToSelector:@selector(webSocket:didCloseWithCode:reason:wasClean:)]) {
-                                [self.delegate webSocket:self didCloseWithCode:0 reason:@"Stream end encountered" wasClean:NO];
+                                [self.delegate webSocket:self didCloseWithCode:SRStatusCodeGoingAway reason:@"Stream end encountered" wasClean:NO];
                             }
                         }];
                     }
