@@ -359,7 +359,7 @@ static __strong NSData *CRLFCRLF;
     
     [self _initializeStreams];
     
-    _heartbeatInterval = 0.0;
+    _heartbeatInterval = 45.0;
     _heartbeatTimeout = 30.0;
     
     // default handlers
