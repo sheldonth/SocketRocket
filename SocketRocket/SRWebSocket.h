@@ -70,6 +70,7 @@ extern NSInteger const SRWebSocketHeartbeatTimeoutErrorCode;
 // considering the server unreachable and disconnecting. Defaults to 30 seconds.
 @property (nonatomic, assign) NSTimeInterval heartbeatTimeout;
 
+@property(nonatomic, strong) NSString* cookieString;
 // Protocols should be an array of strings that turn into Sec-WebSocket-Protocol.
 - (id)initWithURLRequest:(NSURLRequest *)request protocols:(NSArray *)protocols;
 - (id)initWithURLRequest:(NSURLRequest *)request;

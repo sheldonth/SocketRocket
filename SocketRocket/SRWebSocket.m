@@ -276,8 +276,6 @@ typedef void (^data_callback)(SRWebSocket *webSocket,  NSData *data);
     
     NSArray *_requestedProtocols;
     SRIOConsumerPool *_consumerPool;
-    
-    NSString* _cookieString;
 }
 
 @synthesize delegate = _delegate;
