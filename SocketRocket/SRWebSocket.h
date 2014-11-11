@@ -51,7 +51,7 @@ extern NSInteger const SRWebSocketHeartbeatTimeoutErrorCode;
 
 @interface SRWebSocket : NSObject <NSStreamDelegate>
 
-@property (nonatomic, assign) id <SRWebSocketDelegate> delegate;
+@property (nonatomic, weak) id <SRWebSocketDelegate> delegate;
 
 @property (nonatomic, readonly) SRReadyState readyState;
 @property (nonatomic, readonly, retain) NSURL *url;
@@ -97,6 +97,9 @@ extern NSInteger const SRWebSocketHeartbeatTimeoutErrorCode;
 // Send a UTF8 String or Data.
 - (void)send:(id)data;
 
+// Send Data (can be nil) in a ping message.
+- (void)sendPing:(NSData *)data;
+
 @end
 
 #pragma mark - SRWebSocketDelegate
@@ -113,6 +116,7 @@ extern NSInteger const SRWebSocketHeartbeatTimeoutErrorCode;
 - (void)webSocket:(SRWebSocket *)webSocket didFailWithError:(NSError *)error;
 - (void)webSocket:(SRWebSocket *)webSocket didCloseWithCode:(NSInteger)code reason:(NSString *)reason wasClean:(BOOL)wasClean;
 - (void)webSocket:(SRWebSocket *)webSocket didReceiveHTTPHeaders:(NSDictionary *)headers;
+- (void)webSocket:(SRWebSocket *)webSocket didReceivePong:(NSData *)pongPayload;
 
 @end
 
