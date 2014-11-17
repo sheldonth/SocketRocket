@@ -760,7 +760,6 @@ static __strong NSData *CRLFCRLF;
 
 - (void)_sendPing
 {
-    NSLog(@"Send Ping");
     
     [self assertOnWorkQueue];
     
@@ -784,7 +783,7 @@ static __strong NSData *CRLFCRLF;
 
 - (void)handlePong
 {
-    NSLog(@"Received pong (%.1f ms round-trip time)", ([NSDate timeIntervalSinceReferenceDate] - _lastSentPingTime) * 1000.0);
+    SRFastLog(@"Received pong (%.1f ms round-trip time)", ([NSDate timeIntervalSinceReferenceDate] - _lastSentPingTime) * 1000.0);
     _waitingForHeartbeatResponse = NO;
 }
 
