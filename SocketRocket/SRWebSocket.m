@@ -364,8 +364,8 @@ static __strong NSData *CRLFCRLF;
     
     [self _initializeStreams];
     
-    _heartbeatInterval = 15.0;
-    _heartbeatTimeout = 30.0;
+    _heartbeatInterval = 5.0;
+    _heartbeatTimeout = 5.0;
     
     // default handlers
 }
@@ -758,22 +758,21 @@ static __strong NSData *CRLFCRLF;
     });
 }
 
-- (void)sendPing:(NSData *)data;
+- (void)_sendPing
 {
-    NSAssert(self.readyState == SR_OPEN, @"Invalid State: Cannot call send: until connection is open");
-    // TODO: maybe not copy this for performance
-    data = [data copy] ?: [NSData data]; // It's okay for a ping to be empty
-    dispatch_async(_workQueue, ^{
-        [self _sendFrameWithOpcode:SROpCodePing data:data];
-        _lastSentPingTime = [NSDate timeIntervalSinceReferenceDate];
-        _waitingForHeartbeatResponse = YES;
-        if (self.heartbeatTimeout > 0.0) {
-            dispatch_source_set_timer(_heartbeatTimer, dispatch_time(DISPATCH_TIME_NOW, self.heartbeatTimeout * NSEC_PER_SEC), DISPATCH_TIME_FOREVER, (1ull * NSEC_PER_SEC) / 10);
-        }
-    });
+    NSLog(@"Send Ping");
+    
+    [self assertOnWorkQueue];
+    
+    [self _sendFrameWithOpcode:SROpCodePing data:[NSData data]];
+    _lastSentPingTime = [NSDate timeIntervalSinceReferenceDate];
+    _waitingForHeartbeatResponse = YES;
+    if (self.heartbeatTimeout > 0.0) {
+        dispatch_source_set_timer(_heartbeatTimer, dispatch_time(DISPATCH_TIME_NOW, self.heartbeatTimeout * NSEC_PER_SEC), DISPATCH_TIME_FOREVER, (1ull * NSEC_PER_SEC) / 10);
+    }
 }
 
-- (void)handlePing:(NSData *)pingData;
+- (void)handlePing:(NSData *)pingData
 {
     // Need to pingpong this off _callbackQueue first to make sure messages happen in order
     [self _performDelegateBlock:^{
@@ -785,13 +784,8 @@ static __strong NSData *CRLFCRLF;
 
 - (void)handlePong
 {
-    SRFastLog(@"Received pong (%.1f ms round-trip time)", ([NSDate timeIntervalSinceReferenceDate] - _lastSentPingTime) * 1000.0);
+    NSLog(@"Received pong (%.1f ms round-trip time)", ([NSDate timeIntervalSinceReferenceDate] - _lastSentPingTime) * 1000.0);
     _waitingForHeartbeatResponse = NO;
-    [self _performDelegateBlock:^{
-        if ([self.delegate respondsToSelector:@selector(webSocket:didReceivePong:)]) {
-            [self.delegate webSocket:self didReceivePong:pongData];
-        }
-    }];
 }
 
 - (void)_resetHeartbeatTimer
@@ -954,7 +948,7 @@ static inline BOOL closeCodeIsValid(int closeCode) {
             [self handlePing:frameData];
             break;
         case SROpCodePong:
-            [self handlePong:frameData];
+            [self handlePong];
             break;
         default:
             [self _closeWithProtocolError:[NSString stringWithFormat:@"Unknown opcode %ld", (long)opcode]];
@@ -962,7 +956,7 @@ static inline BOOL closeCodeIsValid(int closeCode) {
             break;
     }
     
-    [self _resetHeartbeatTimer];
+//    [self _resetHeartbeatTimer];
 }
 
 - (void)_handleFrameHeader:(frame_header)frame_header curData:(NSData *)curData;
@@ -1382,11 +1376,7 @@ static const size_t SRFrameHeaderOverhead = 32;
 {
     [self assertOnWorkQueue];
     
-    if (nil == data) {
-        return;
-    }
-    
-    NSAssert([data isKindOfClass:[NSData class]] || [data isKindOfClass:[NSString class]], @"NSString or NSData");
+    NSAssert(data == nil || [data isKindOfClass:[NSData class]] || [data isKindOfClass:[NSString class]], @"Function expects nil, NSString or NSData");
     
     size_t payloadLength = [data isKindOfClass:[NSString class]] ? [(NSString *)data lengthOfBytesUsingEncoding:NSUTF8StringEncoding] : [data length];
         
@@ -1417,8 +1407,6 @@ static const size_t SRFrameHeaderOverhead = 32;
         unmasked_payload = (uint8_t *)[data bytes];
     } else if ([data isKindOfClass:[NSString class]]) {
         unmasked_payload =  (const uint8_t *)[data UTF8String];
-    } else {
-        return;
     }
     
     if (payloadLength < 126) {
