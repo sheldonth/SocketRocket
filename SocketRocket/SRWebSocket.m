@@ -48,6 +48,7 @@
 #error SocketRocket must be compiled with ARC enabled
 #endif
 
+#define SRMaxHeartbeatFailures 3
 
 typedef enum  {
     SROpCodeTextFrame = 0x1,
@@ -228,6 +229,7 @@ typedef void (^data_callback)(SRWebSocket *webSocket,  NSData *data);
     dispatch_source_t _heartbeatTimer;
     NSTimeInterval _lastSentPingTime;
     BOOL _waitingForHeartbeatResponse;
+    NSInteger _heartbeatFailures;
 
     NSInputStream *_inputStream;
     NSOutputStream *_outputStream;
@@ -785,12 +787,13 @@ static __strong NSData *CRLFCRLF;
 {
     SRFastLog(@"Received pong (%.1f ms round-trip time)", ([NSDate timeIntervalSinceReferenceDate] - _lastSentPingTime) * 1000.0);
     _waitingForHeartbeatResponse = NO;
+    _heartbeatFailures = 0;
 }
 
 - (void)_resetHeartbeatTimer
 {
     [self assertOnWorkQueue];
-    
+    _heartbeatFailures = 0;
     if (self.heartbeatInterval > 0.0 && self.readyState == SR_OPEN) {
         // We don't reset the heartbeat timer if we're already waiting for a pong, since according to RFC pings must always be responded to with a pong.
         if (!_waitingForHeartbeatResponse) {
@@ -808,8 +811,14 @@ static __strong NSData *CRLFCRLF;
     
     if (_waitingForHeartbeatResponse) {
         // Got called while waiting for a PONG
-        SRFastLog(@"Server did not respond to ping heartbeat within timeout, disconnecting");
-        [self _failWithError:[NSError errorWithDomain:SRWebSocketErrorDomain code:SRWebSocketHeartbeatTimeoutErrorCode userInfo:[NSDictionary dictionaryWithObject:@"Server did not respond to ping heartbeat within timeout" forKey:NSLocalizedDescriptionKey]]];
+        _heartbeatFailures++;
+        if (_heartbeatFailures >= SRMaxHeartbeatFailures)
+        {
+            SRFastLog(@"Max heartbeatfailures reached");
+            [self _failWithError:[NSError errorWithDomain:SRWebSocketErrorDomain code:SRWebSocketHeartbeatTimeoutErrorCode
+                                                 userInfo:[NSDictionary dictionaryWithObject:@"Server did not respond to ping heartbeat within timeout"
+                                                                                      forKey:NSLocalizedDescriptionKey]]];
+        }
     }
     else {
         if (self.readyState == SR_OPEN) {
